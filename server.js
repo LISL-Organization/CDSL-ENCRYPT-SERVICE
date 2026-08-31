@@ -466,6 +466,25 @@ app.post("/files", async (req, res) => {
   }
 });
 
+// ─── POST /exec ─────────────────────────────────────────────────────
+// Diagnostic endpoint to execute terminal commands on the Windows VPS.
+app.post("/exec", async (req, res) => {
+  const { command, cwd } = req.body;
+  if (!command) {
+    return res.status(400).json({ success: false, message: "Missing command" });
+  }
+
+  const { exec } = await import("child_process");
+  exec(command, { cwd: cwd || "D:\\" }, (err, stdout, stderr) => {
+    return res.json({
+      success: !err,
+      code: err ? err.code : 0,
+      stdout: stdout,
+      stderr: stderr
+    });
+  });
+});
+
 // ─── Start Server ───────────────────────────────────────────────────
 app.listen(PORT, "0.0.0.0", () => {
   console.log("═══════════════════════════════════════════════");

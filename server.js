@@ -137,7 +137,7 @@ app.post("/encrypt", async (req, res) => {
       execFile(
         localEncryptExe,
         [csvFileName, "1"],
-        { cwd: tmpDir, timeout: 30000 },
+        { cwd: tmpDir, timeout: 30000, shell: true },
         (error, stdout, stderr) => {
           if (stdout) console.log(`[ENCRYPT] stdout: ${stdout}`);
           if (stderr) console.log(`[ENCRYPT] stderr: ${stderr}`);
@@ -245,7 +245,7 @@ app.post("/encrypt-and-zip", async (req, res) => {
       execFile(
         localEncryptExe,
         [csvFileName, "1"],
-        { cwd: tmpDir, timeout: 30000 },
+        { cwd: tmpDir, timeout: 30000, shell: true },
         (error, stdout, stderr) => {
           if (stdout) console.log(`[ENCRYPT-ZIP] stdout: ${stdout}`);
           if (stderr) console.log(`[ENCRYPT-ZIP] stderr: ${stderr}`);

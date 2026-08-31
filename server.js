@@ -110,8 +110,9 @@ app.post("/encrypt", async (req, res) => {
     return res.status(500).json({ success: false, message: "Encrypt.exe not found at " + ENCRYPT_EXE_SOURCE });
   }
 
-  // Create a unique temp directory for this request
-  const tmpDir = path.join(os.tmpdir(), `cdsl_enc_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`);
+  // Create a unique temp directory containing 'd2u' for this request
+  const baseTmpDir = path.join(os.tmpdir(), `cdsl_enc_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`);
+  const tmpDir = path.join(baseTmpDir, "d2u");
   fs.mkdirSync(tmpDir, { recursive: true });
 
   const csvBaseName = fileName.replace(/\.(csv|CSV)$/i, "");
@@ -186,7 +187,7 @@ app.post("/encrypt", async (req, res) => {
   } finally {
     // Cleanup temp directory
     try {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
+      fs.rmSync(baseTmpDir, { recursive: true, force: true });
     } catch (e) {
       console.warn(`[ENCRYPT] Cleanup warning: ${e.message}`);
     }
@@ -221,8 +222,9 @@ app.post("/encrypt-and-zip", async (req, res) => {
     return res.status(500).json({ success: false, message: "Encrypt.exe not found" });
   }
 
-  // Create a unique temp directory for this request
-  const tmpDir = path.join(os.tmpdir(), `cdsl_enc_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`);
+  // Create a unique temp directory containing 'd2u' for this request
+  const baseTmpDir = path.join(os.tmpdir(), `cdsl_enc_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`);
+  const tmpDir = path.join(baseTmpDir, "d2u");
   fs.mkdirSync(tmpDir, { recursive: true });
 
   const csvBaseName = fileName.replace(/\.(csv|CSV)$/i, "");
@@ -307,7 +309,7 @@ app.post("/encrypt-and-zip", async (req, res) => {
     });
   } finally {
     try {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
+      fs.rmSync(baseTmpDir, { recursive: true, force: true });
     } catch (e) {}
   }
 });

@@ -41,8 +41,10 @@ const app = express();
 const PORT = process.env.PORT || 4500;
 const API_KEY = process.env.API_KEY || ""; // Optional: set for production security
 
-// The Encrypt.exe binary sits in the same directory as this server
+// The CDSL executables sit in the same directory as this server
 const ENCRYPT_EXE_SOURCE = path.join(__dirname, "Encrypt.exe");
+const D2U_EXE_SOURCE = path.join(__dirname, "D2U.exe");
+const ENC_EXE_SOURCE = path.join(__dirname, "ENC.EXE");
 
 // ─── Middleware ──────────────────────────────────────────────────────
 app.use(cors());
@@ -63,14 +65,19 @@ app.use((req, res, next) => {
 
 // ─── Health Check ───────────────────────────────────────────────────
 app.get("/health", (req, res) => {
-  const exeExists = fs.existsSync(ENCRYPT_EXE_SOURCE);
+  const encryptExists = fs.existsSync(ENCRYPT_EXE_SOURCE);
+  const d2uExists = fs.existsSync(D2U_EXE_SOURCE);
+  const encExists = fs.existsSync(ENC_EXE_SOURCE);
   res.json({
     status: "ok",
     platform: os.platform(),
     arch: os.arch(),
     nodeVersion: process.version,
-    encryptExeFound: exeExists,
-    encryptExePath: ENCRYPT_EXE_SOURCE,
+    executablesFound: {
+      "Encrypt.exe": encryptExists,
+      "D2U.exe": d2uExists,
+      "ENC.EXE": encExists
+    },
     uptime: process.uptime(),
   });
 });
@@ -106,12 +113,20 @@ app.post("/encrypt", async (req, res) => {
     return res.status(400).json({ success: false, message: "Empty CSV content" });
   }
 
-  if (!fs.existsSync(ENCRYPT_EXE_SOURCE)) {
-    return res.status(500).json({ success: false, message: "Encrypt.exe not found at " + ENCRYPT_EXE_SOURCE });
+  if (!fs.existsSync(ENCRYPT_EXE_SOURCE) || !fs.existsSync(D2U_EXE_SOURCE) || !fs.existsSync(ENC_EXE_SOURCE)) {
+    return res.status(500).json({ 
+      success: false, 
+      message: "Required CDSL binaries missing. Make sure Encrypt.exe, D2U.exe, and ENC.EXE exist in the service folder.",
+      found: {
+        "Encrypt.exe": fs.existsSync(ENCRYPT_EXE_SOURCE),
+        "D2U.exe": fs.existsSync(D2U_EXE_SOURCE),
+        "ENC.EXE": fs.existsSync(ENC_EXE_SOURCE)
+      }
+    });
   }
 
   // Create isolated directories mimic'ing production layout
-  // baseTmpDir/d2u/Encrypt.exe
+  // baseTmpDir/d2u/Encrypt.exe, D2U.exe, ENC.EXE
   // baseTmpDir/CDSL/BO_UPLD_...csv
   const baseTmpDir = path.join(os.tmpdir(), `cdsl_enc_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`);
   const d2uDir = path.join(baseTmpDir, "d2u");
@@ -125,8 +140,11 @@ app.post("/encrypt", async (req, res) => {
   const csvFilePath = path.join(cdslDir, csvFileName);
   fs.writeFileSync(csvFilePath, csvContent, "utf8");
 
+  // Copy all three binaries to the temp d2u folder since Encrypt.exe spawns them internally
   const localEncryptExe = path.join(d2uDir, "Encrypt.exe");
   fs.copyFileSync(ENCRYPT_EXE_SOURCE, localEncryptExe);
+  fs.copyFileSync(D2U_EXE_SOURCE, path.join(d2uDir, "D2U.exe"));
+  fs.copyFileSync(ENC_EXE_SOURCE, path.join(d2uDir, "ENC.EXE"));
 
   console.log(`[ENCRYPT] Received CSV (${csvContent.length} bytes), file: ${csvFileName}`);
   console.log(`[ENCRYPT] Temp dir: ${baseTmpDir}`);
@@ -219,8 +237,8 @@ app.post("/encrypt-and-zip", async (req, res) => {
     return res.status(400).json({ success: false, message: "Empty CSV content" });
   }
 
-  if (!fs.existsSync(ENCRYPT_EXE_SOURCE)) {
-    return res.status(500).json({ success: false, message: "Encrypt.exe not found" });
+  if (!fs.existsSync(ENCRYPT_EXE_SOURCE) || !fs.existsSync(D2U_EXE_SOURCE) || !fs.existsSync(ENC_EXE_SOURCE)) {
+    return res.status(500).json({ success: false, message: "Required CDSL binaries missing (Encrypt.exe, D2U.exe, ENC.EXE)" });
   }
 
   // Create isolated directories mimic'ing production layout
@@ -236,8 +254,11 @@ app.post("/encrypt-and-zip", async (req, res) => {
   const csvFilePath = path.join(cdslDir, csvFileName);
   fs.writeFileSync(csvFilePath, csvContent, "utf8");
 
+  // Copy all three binaries to the temp d2u folder
   const localEncryptExe = path.join(d2uDir, "Encrypt.exe");
   fs.copyFileSync(ENCRYPT_EXE_SOURCE, localEncryptExe);
+  fs.copyFileSync(D2U_EXE_SOURCE, path.join(d2uDir, "D2U.exe"));
+  fs.copyFileSync(ENC_EXE_SOURCE, path.join(d2uDir, "ENC.EXE"));
 
   console.log(`[ENCRYPT-ZIP] Received CSV (${csvContent.length} bytes), file: ${csvFileName}`);
   console.log(`[ENCRYPT-ZIP] Temp dir: ${baseTmpDir}`);
@@ -322,6 +343,8 @@ app.listen(PORT, "0.0.0.0", () => {
   console.log(`  Platform: ${os.platform()} (${os.arch()})`);
   console.log(`  Node.js:  ${process.version}`);
   console.log(`  Encrypt.exe: ${fs.existsSync(ENCRYPT_EXE_SOURCE) ? "✅ Found" : "❌ NOT FOUND"}`);
+  console.log(`  D2U.exe:     ${fs.existsSync(D2U_EXE_SOURCE) ? "✅ Found" : "❌ NOT FOUND"}`);
+  console.log(`  ENC.EXE:     ${fs.existsSync(ENC_EXE_SOURCE) ? "✅ Found" : "❌ NOT FOUND"}`);
   console.log(`  API Key:  ${API_KEY ? "✅ Enabled" : "⚠️  Disabled (open access)"}`);
   console.log("═══════════════════════════════════════════════");
   console.log(`  Endpoints:`);

@@ -8,6 +8,35 @@ const crypto = require("crypto");
 const { execFile } = require("child_process");
 const archiver = require("archiver");
 
+// Diagnostic log capture
+const recentLogs = [];
+const originalLog = console.log;
+const originalError = console.error;
+const originalWarn = console.warn;
+
+const captureLog = (type, args) => {
+  const msg = `[${new Date().toISOString()}] [${type}] ${args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(' ')}`;
+  recentLogs.push(msg);
+  if (recentLogs.length > 500) {
+    recentLogs.shift();
+  }
+};
+
+console.log = (...args) => {
+  captureLog('INFO', args);
+  originalLog(...args);
+};
+
+console.error = (...args) => {
+  captureLog('ERROR', args);
+  originalError(...args);
+};
+
+console.warn = (...args) => {
+  captureLog('WARN', args);
+  originalWarn(...args);
+};
+
 const app = express();
 const PORT = process.env.PORT || 4500;
 const API_KEY = process.env.API_KEY || ""; // Optional: set for production security
@@ -44,6 +73,11 @@ app.get("/health", (req, res) => {
     encryptExePath: ENCRYPT_EXE,
     uptime: process.uptime(),
   });
+});
+
+// ─── Diagnostic Logs ────────────────────────────────────────────────
+app.get("/logs", (req, res) => {
+  res.json({ logs: recentLogs });
 });
 
 // ─── POST /encrypt ──────────────────────────────────────────────────

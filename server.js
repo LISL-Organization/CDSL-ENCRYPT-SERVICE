@@ -7,6 +7,8 @@ const os = require("os");
 const crypto = require("crypto");
 const { execFile } = require("child_process");
 const archiver = require("archiver");
+const axios = require("axios");
+const FormData = require("form-data");
 
 // Diagnostic log capture
 const recentLogs = [];
@@ -333,6 +335,87 @@ app.post("/encrypt-and-zip", async (req, res) => {
     try {
       fs.rmSync(baseTmpDir, { recursive: true, force: true });
     } catch (e) {}
+  }
+});
+
+// ─── POST /proxy ────────────────────────────────────────────────────
+// Acts as a whitelisted tunnel/proxy to CDSL API.
+// Supports both standard JSON payloads and multipart/form-data (base64 file buffers).
+app.post("/proxy", async (req, res) => {
+  const { url, method = "POST", headers = {}, jsonBody = null, multipart = null } = req.body;
+
+  if (!url) {
+    return res.status(400).json({ success: false, message: "URL is required" });
+  }
+
+  console.log(`[PROXY] Forwarding ${method} request to: ${url}`);
+
+  try {
+    const forwardHeaders = { ...headers };
+    // Remove headers that might interfere
+    delete forwardHeaders.host;
+    delete forwardHeaders.connection;
+    delete forwardHeaders["content-length"];
+
+    let response;
+
+    if (multipart) {
+      const form = new FormData();
+      
+      // Append form fields
+      if (multipart.fields) {
+        Object.entries(multipart.fields).forEach(([key, val]) => {
+          form.append(key, val);
+        });
+      }
+
+      // Reconstruct file buffer from base64
+      if (multipart.file) {
+        const fileBuffer = Buffer.from(multipart.file.base64, "base64");
+        form.append(multipart.file.fieldName || "file", fileBuffer, {
+          filename: multipart.file.filename || "upload.zip",
+          contentType: multipart.file.contentType || "application/zip",
+        });
+      }
+
+      // Merge headers
+      const formHeaders = form.getHeaders();
+      Object.assign(forwardHeaders, formHeaders);
+
+      response = await axios({
+        url,
+        method,
+        headers: forwardHeaders,
+        data: form,
+        timeout: 30000,
+        validateStatus: () => true
+      });
+    } else {
+      // Standard JSON request
+      response = await axios({
+        url,
+        method,
+        headers: forwardHeaders,
+        data: jsonBody,
+        timeout: 30000,
+        validateStatus: () => true
+      });
+    }
+
+    console.log(`[PROXY] Gateway responded with status: ${response.status}`);
+
+    // Forward the headers and response body back
+    res.status(response.status);
+    Object.entries(response.headers).forEach(([key, val]) => {
+      if (key.toLowerCase() !== "transfer-encoding") {
+        res.set(key, val);
+      }
+    });
+
+    res.send(response.data);
+  } catch (err) {
+    console.error(`[PROXY] ❌ Forwarding failed:`, err.message);
+    res.status(500).json({ success: false, message: "Proxy forwarding error: " + err.message });
   }
 });
 

@@ -170,9 +170,9 @@ app.post("/encrypt", async (req, res) => {
       );
     });
 
-    // Find the encrypted output file (.CSV.ENC.00 or .csv.enc.00) in the CDSL directory
+    // Find the encrypted output file (e.g., .csv.enc.41 or similar dynamic extension) in the CDSL directory
     const files = fs.readdirSync(cdslDir);
-    const encFile = files.find((f) => /\.CSV\.ENC\.00$/i.test(f) || /\.enc\.00$/i.test(f));
+    const encFile = files.find((f) => /\.enc\.[a-z0-9]{2}$/i.test(f));
 
     if (!encFile) {
       console.error(`[ENCRYPT] Encrypted file not found! Files in CDSL:`, files);
@@ -280,7 +280,7 @@ app.post("/encrypt-and-zip", async (req, res) => {
     });
 
     const files = fs.readdirSync(cdslDir);
-    const encFile = files.find((f) => /\.CSV\.ENC\.00$/i.test(f) || /\.enc\.00$/i.test(f));
+    const encFile = files.find((f) => /\.enc\.[a-z0-9]{2}$/i.test(f));
 
     if (!encFile) {
       return res.status(500).json({

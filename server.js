@@ -117,7 +117,7 @@ app.post("/encrypt", async (req, res) => {
   const csvBaseName = fileName.replace(/\.(csv|CSV)$/i, "");
   
   // Write the CSV file directly inside the temp folder
-  const csvFileName = `${csvBaseName}.CSV`;
+  const csvFileName = `${csvBaseName}.csv`;
   const csvFilePath = path.join(tmpDir, csvFileName);
   fs.writeFileSync(csvFilePath, csvContent, "utf8");
 
@@ -228,7 +228,7 @@ app.post("/encrypt-and-zip", async (req, res) => {
   const csvBaseName = fileName.replace(/\.(csv|CSV)$/i, "");
   
   // Write the CSV file directly inside the temp folder
-  const csvFileName = `${csvBaseName}.CSV`;
+  const csvFileName = `${csvBaseName}.csv`;
   const csvFilePath = path.join(tmpDir, csvFileName);
   fs.writeFileSync(csvFilePath, csvContent, "utf8");
 

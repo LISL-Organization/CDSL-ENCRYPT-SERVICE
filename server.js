@@ -351,7 +351,22 @@ app.post("/proxy", async (req, res) => {
   console.log(`[PROXY] Forwarding ${method} request to: ${url}`);
 
   try {
-    const forwardHeaders = { ...headers };
+    const forwardHeaders = {};
+    Object.entries(headers).forEach(([key, val]) => {
+      const lowerKey = key.toLowerCase();
+      if (lowerKey === "authsign") {
+        forwardHeaders["AuthSign"] = val;
+      } else if (lowerKey === "authtoken") {
+        forwardHeaders["AuthToken"] = val;
+      } else if (lowerKey === "filecomputehash") {
+        forwardHeaders["FileComputeHash"] = val;
+      } else if (lowerKey === "referer") {
+        forwardHeaders["Referer"] = val;
+      } else {
+        forwardHeaders[key] = val;
+      }
+    });
+
     // Remove headers that might interfere
     delete forwardHeaders.host;
     delete forwardHeaders.connection;

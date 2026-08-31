@@ -1,0 +1,19 @@
+{
+  "name": "cdsl-encrypt-service",
+  "version": "1.0.0",
+  "description": "Lightweight Windows microservice that encrypts CDSL BO CSV files using native Encrypt.exe",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "cors": "^2.8.5",
+    "archiver": "^7.0.1",
+    "dotenv": "^16.4.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

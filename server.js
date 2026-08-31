@@ -434,6 +434,38 @@ app.post("/proxy", async (req, res) => {
   }
 });
 
+// ─── POST /files ────────────────────────────────────────────────────
+// Diagnostic endpoint to list directories and read files on the Windows VPS.
+app.post("/files", async (req, res) => {
+  const { path: dirPath, readPath } = req.body;
+  
+  try {
+    if (readPath) {
+      if (fs.existsSync(readPath)) {
+        const content = fs.readFileSync(readPath, "utf8");
+        return res.json({ success: true, content });
+      }
+      return res.status(404).json({ success: false, message: "File not found: " + readPath });
+    }
+
+    const targetPath = dirPath || "D:\\";
+    if (fs.existsSync(targetPath)) {
+      const items = fs.readdirSync(targetPath).map(name => {
+        const full = path.join(targetPath, name);
+        let isDir = false;
+        try {
+          isDir = fs.statSync(full).isDirectory();
+        } catch (e) {}
+        return { name, isDir };
+      });
+      return res.json({ success: true, items });
+    }
+    return res.status(404).json({ success: false, message: "Directory not found: " + targetPath });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // ─── Start Server ───────────────────────────────────────────────────
 app.listen(PORT, "0.0.0.0", () => {
   console.log("═══════════════════════════════════════════════");

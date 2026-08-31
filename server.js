@@ -82,7 +82,7 @@ app.get("/logs", (req, res) => {
 
 // ─── POST /encrypt ──────────────────────────────────────────────────
 // Accepts raw CSV content (text/plain or JSON body with { csv, fileName })
-// Runs Encrypt.exe natively on Windows using local paths to avoid Borland MAX_PATH issues
+// Runs Encrypt.exe natively in standard cdslFilesFolder matching paths (d2u + CDSL)
 // Returns the encrypted .CSV.ENC.00 buffer
 app.post("/encrypt", async (req, res) => {
   let csvContent = "";
@@ -110,35 +110,36 @@ app.post("/encrypt", async (req, res) => {
     return res.status(500).json({ success: false, message: "Encrypt.exe not found at " + ENCRYPT_EXE_SOURCE });
   }
 
-  // Create a unique temp directory containing 'd2u' for this request
+  // Create isolated directories mimic'ing production layout
+  // baseTmpDir/d2u/Encrypt.exe
+  // baseTmpDir/CDSL/BO_UPLD_...csv
   const baseTmpDir = path.join(os.tmpdir(), `cdsl_enc_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`);
-  const tmpDir = path.join(baseTmpDir, "d2u");
-  fs.mkdirSync(tmpDir, { recursive: true });
+  const d2uDir = path.join(baseTmpDir, "d2u");
+  const cdslDir = path.join(baseTmpDir, "CDSL");
+  
+  fs.mkdirSync(d2uDir, { recursive: true });
+  fs.mkdirSync(cdslDir, { recursive: true });
 
   const csvBaseName = fileName.replace(/\.(csv|CSV)$/i, "");
-  
-  // Write the CSV file directly inside the temp folder
   const csvFileName = `${csvBaseName}.csv`;
-  const csvFilePath = path.join(tmpDir, csvFileName);
+  const csvFilePath = path.join(cdslDir, csvFileName);
   fs.writeFileSync(csvFilePath, csvContent, "utf8");
 
-  // Copy Encrypt.exe to the temp folder to run it locally relative to the CSV file
-  // This bypasses Borland C++ MAX_PATH length limits and command line backslash issues.
-  const localEncryptExe = path.join(tmpDir, "Encrypt.exe");
+  const localEncryptExe = path.join(d2uDir, "Encrypt.exe");
   fs.copyFileSync(ENCRYPT_EXE_SOURCE, localEncryptExe);
 
   console.log(`[ENCRYPT] Received CSV (${csvContent.length} bytes), file: ${csvFileName}`);
-  console.log(`[ENCRYPT] Temp dir: ${tmpDir}`);
-  console.log(`[ENCRYPT] Running: ${localEncryptExe} ${csvFileName} 1`);
+  console.log(`[ENCRYPT] Temp dir: ${baseTmpDir}`);
+  console.log(`[ENCRYPT] Running: ${localEncryptExe} "${csvFilePath}" 1`);
 
   try {
-    // Execute Encrypt.exe <csvFileName> 1
+    // Execute Encrypt.exe <csvFilePath> 1
     // The exe reads the CSV and outputs <csvBaseName>.CSV.ENC.00 in the same directory
     await new Promise((resolve, reject) => {
       execFile(
         localEncryptExe,
-        [csvFileName, "1"],
-        { cwd: tmpDir, timeout: 30000, shell: true },
+        [csvFilePath, "1"],
+        { cwd: cdslDir, timeout: 30000, shell: true },
         (error, stdout, stderr) => {
           if (stdout) console.log(`[ENCRYPT] stdout: ${stdout}`);
           if (stderr) console.log(`[ENCRYPT] stderr: ${stderr}`);
@@ -151,20 +152,20 @@ app.post("/encrypt", async (req, res) => {
       );
     });
 
-    // Find the encrypted output file (.CSV.ENC.00 or .csv.enc.00)
-    const files = fs.readdirSync(tmpDir);
+    // Find the encrypted output file (.CSV.ENC.00 or .csv.enc.00) in the CDSL directory
+    const files = fs.readdirSync(cdslDir);
     const encFile = files.find((f) => /\.CSV\.ENC\.00$/i.test(f) || /\.enc\.00$/i.test(f));
 
     if (!encFile) {
-      console.error(`[ENCRYPT] Encrypted file not found! Files in tmpDir:`, files);
+      console.error(`[ENCRYPT] Encrypted file not found! Files in CDSL:`, files);
       return res.status(500).json({
         success: false,
         message: "Encrypt.exe did not produce an encrypted output file",
-        filesInTmp: files,
+        filesInCDSL: files,
       });
     }
 
-    const encFilePath = path.join(tmpDir, encFile);
+    const encFilePath = path.join(cdslDir, encFile);
     const encBuffer = fs.readFileSync(encFilePath);
 
     console.log(`[ENCRYPT] ✅ Encrypted successfully: ${encFile} (${encBuffer.length} bytes)`);
@@ -185,7 +186,7 @@ app.post("/encrypt", async (req, res) => {
       message: "Encrypt.exe execution failed: " + err.message,
     });
   } finally {
-    // Cleanup temp directory
+    // Cleanup temp directories
     try {
       fs.rmSync(baseTmpDir, { recursive: true, force: true });
     } catch (e) {
@@ -222,32 +223,32 @@ app.post("/encrypt-and-zip", async (req, res) => {
     return res.status(500).json({ success: false, message: "Encrypt.exe not found" });
   }
 
-  // Create a unique temp directory containing 'd2u' for this request
+  // Create isolated directories mimic'ing production layout
   const baseTmpDir = path.join(os.tmpdir(), `cdsl_enc_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`);
-  const tmpDir = path.join(baseTmpDir, "d2u");
-  fs.mkdirSync(tmpDir, { recursive: true });
+  const d2uDir = path.join(baseTmpDir, "d2u");
+  const cdslDir = path.join(baseTmpDir, "CDSL");
+  
+  fs.mkdirSync(d2uDir, { recursive: true });
+  fs.mkdirSync(cdslDir, { recursive: true });
 
   const csvBaseName = fileName.replace(/\.(csv|CSV)$/i, "");
-  
-  // Write the CSV file directly inside the temp folder
   const csvFileName = `${csvBaseName}.csv`;
-  const csvFilePath = path.join(tmpDir, csvFileName);
+  const csvFilePath = path.join(cdslDir, csvFileName);
   fs.writeFileSync(csvFilePath, csvContent, "utf8");
 
-  // Copy Encrypt.exe to the temp folder to run it locally relative to the CSV file
-  const localEncryptExe = path.join(tmpDir, "Encrypt.exe");
+  const localEncryptExe = path.join(d2uDir, "Encrypt.exe");
   fs.copyFileSync(ENCRYPT_EXE_SOURCE, localEncryptExe);
 
   console.log(`[ENCRYPT-ZIP] Received CSV (${csvContent.length} bytes), file: ${csvFileName}`);
-  console.log(`[ENCRYPT-ZIP] Temp dir: ${tmpDir}`);
-  console.log(`[ENCRYPT-ZIP] Running: ${localEncryptExe} ${csvFileName} 1`);
+  console.log(`[ENCRYPT-ZIP] Temp dir: ${baseTmpDir}`);
+  console.log(`[ENCRYPT-ZIP] Running: ${localEncryptExe} "${csvFilePath}" 1`);
 
   try {
     await new Promise((resolve, reject) => {
       execFile(
         localEncryptExe,
-        [csvFileName, "1"],
-        { cwd: tmpDir, timeout: 30000, shell: true },
+        [csvFilePath, "1"],
+        { cwd: cdslDir, timeout: 30000, shell: true },
         (error, stdout, stderr) => {
           if (stdout) console.log(`[ENCRYPT-ZIP] stdout: ${stdout}`);
           if (stderr) console.log(`[ENCRYPT-ZIP] stderr: ${stderr}`);
@@ -257,18 +258,18 @@ app.post("/encrypt-and-zip", async (req, res) => {
       );
     });
 
-    const files = fs.readdirSync(tmpDir);
+    const files = fs.readdirSync(cdslDir);
     const encFile = files.find((f) => /\.CSV\.ENC\.00$/i.test(f) || /\.enc\.00$/i.test(f));
 
     if (!encFile) {
       return res.status(500).json({
         success: false,
         message: "Encrypt.exe did not produce an encrypted output file",
-        filesInTmp: files,
+        filesInCDSL: files,
       });
     }
 
-    const encFilePath = path.join(tmpDir, encFile);
+    const encFilePath = path.join(cdslDir, encFile);
     const encBuffer = fs.readFileSync(encFilePath);
 
     // Create ZIP archive

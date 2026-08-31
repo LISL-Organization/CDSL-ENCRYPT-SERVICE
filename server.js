@@ -42,7 +42,7 @@ const PORT = process.env.PORT || 4500;
 const API_KEY = process.env.API_KEY || ""; // Optional: set for production security
 
 // The Encrypt.exe binary sits in the same directory as this server
-const ENCRYPT_EXE = path.join(__dirname, "Encrypt.exe");
+const ENCRYPT_EXE_SOURCE = path.join(__dirname, "Encrypt.exe");
 
 // ─── Middleware ──────────────────────────────────────────────────────
 app.use(cors());
@@ -63,14 +63,14 @@ app.use((req, res, next) => {
 
 // ─── Health Check ───────────────────────────────────────────────────
 app.get("/health", (req, res) => {
-  const exeExists = fs.existsSync(ENCRYPT_EXE);
+  const exeExists = fs.existsSync(ENCRYPT_EXE_SOURCE);
   res.json({
     status: "ok",
     platform: os.platform(),
     arch: os.arch(),
     nodeVersion: process.version,
     encryptExeFound: exeExists,
-    encryptExePath: ENCRYPT_EXE,
+    encryptExePath: ENCRYPT_EXE_SOURCE,
     uptime: process.uptime(),
   });
 });
@@ -82,7 +82,7 @@ app.get("/logs", (req, res) => {
 
 // ─── POST /encrypt ──────────────────────────────────────────────────
 // Accepts raw CSV content (text/plain or JSON body with { csv, fileName })
-// Runs Encrypt.exe natively on Windows
+// Runs Encrypt.exe natively on Windows using local paths to avoid Borland MAX_PATH issues
 // Returns the encrypted .CSV.ENC.00 buffer
 app.post("/encrypt", async (req, res) => {
   let csvContent = "";
@@ -106,30 +106,37 @@ app.post("/encrypt", async (req, res) => {
     return res.status(400).json({ success: false, message: "Empty CSV content" });
   }
 
-  if (!fs.existsSync(ENCRYPT_EXE)) {
-    return res.status(500).json({ success: false, message: "Encrypt.exe not found at " + ENCRYPT_EXE });
+  if (!fs.existsSync(ENCRYPT_EXE_SOURCE)) {
+    return res.status(500).json({ success: false, message: "Encrypt.exe not found at " + ENCRYPT_EXE_SOURCE });
   }
 
   // Create a unique temp directory for this request
   const tmpDir = path.join(os.tmpdir(), `cdsl_enc_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`);
   fs.mkdirSync(tmpDir, { recursive: true });
 
-  // Write the CSV file
   const csvBaseName = fileName.replace(/\.(csv|CSV)$/i, "");
-  const csvFilePath = path.join(tmpDir, `${csvBaseName}.CSV`);
+  
+  // Write the CSV file directly inside the temp folder
+  const csvFileName = `${csvBaseName}.CSV`;
+  const csvFilePath = path.join(tmpDir, csvFileName);
   fs.writeFileSync(csvFilePath, csvContent, "utf8");
 
-  console.log(`[ENCRYPT] Received CSV (${csvContent.length} bytes), file: ${csvBaseName}.CSV`);
+  // Copy Encrypt.exe to the temp folder to run it locally relative to the CSV file
+  // This bypasses Borland C++ MAX_PATH length limits and command line backslash issues.
+  const localEncryptExe = path.join(tmpDir, "Encrypt.exe");
+  fs.copyFileSync(ENCRYPT_EXE_SOURCE, localEncryptExe);
+
+  console.log(`[ENCRYPT] Received CSV (${csvContent.length} bytes), file: ${csvFileName}`);
   console.log(`[ENCRYPT] Temp dir: ${tmpDir}`);
-  console.log(`[ENCRYPT] Running: Encrypt.exe "${csvFilePath}" 1`);
+  console.log(`[ENCRYPT] Running: ${localEncryptExe} ${csvFileName} 1`);
 
   try {
-    // Execute Encrypt.exe <csvFilePath> 1
+    // Execute Encrypt.exe <csvFileName> 1
     // The exe reads the CSV and outputs <csvBaseName>.CSV.ENC.00 in the same directory
     await new Promise((resolve, reject) => {
       execFile(
-        ENCRYPT_EXE,
-        [csvFilePath, "1"],
+        localEncryptExe,
+        [csvFileName, "1"],
         { cwd: tmpDir, timeout: 30000 },
         (error, stdout, stderr) => {
           if (stdout) console.log(`[ENCRYPT] stdout: ${stdout}`);
@@ -210,24 +217,34 @@ app.post("/encrypt-and-zip", async (req, res) => {
     return res.status(400).json({ success: false, message: "Empty CSV content" });
   }
 
-  if (!fs.existsSync(ENCRYPT_EXE)) {
+  if (!fs.existsSync(ENCRYPT_EXE_SOURCE)) {
     return res.status(500).json({ success: false, message: "Encrypt.exe not found" });
   }
 
+  // Create a unique temp directory for this request
   const tmpDir = path.join(os.tmpdir(), `cdsl_enc_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`);
   fs.mkdirSync(tmpDir, { recursive: true });
 
   const csvBaseName = fileName.replace(/\.(csv|CSV)$/i, "");
-  const csvFilePath = path.join(tmpDir, `${csvBaseName}.CSV`);
+  
+  // Write the CSV file directly inside the temp folder
+  const csvFileName = `${csvBaseName}.CSV`;
+  const csvFilePath = path.join(tmpDir, csvFileName);
   fs.writeFileSync(csvFilePath, csvContent, "utf8");
 
-  console.log(`[ENCRYPT-ZIP] Received CSV (${csvContent.length} bytes), file: ${csvBaseName}`);
+  // Copy Encrypt.exe to the temp folder to run it locally relative to the CSV file
+  const localEncryptExe = path.join(tmpDir, "Encrypt.exe");
+  fs.copyFileSync(ENCRYPT_EXE_SOURCE, localEncryptExe);
+
+  console.log(`[ENCRYPT-ZIP] Received CSV (${csvContent.length} bytes), file: ${csvFileName}`);
+  console.log(`[ENCRYPT-ZIP] Temp dir: ${tmpDir}`);
+  console.log(`[ENCRYPT-ZIP] Running: ${localEncryptExe} ${csvFileName} 1`);
 
   try {
     await new Promise((resolve, reject) => {
       execFile(
-        ENCRYPT_EXE,
-        [csvFilePath, "1"],
+        localEncryptExe,
+        [csvFileName, "1"],
         { cwd: tmpDir, timeout: 30000 },
         (error, stdout, stderr) => {
           if (stdout) console.log(`[ENCRYPT-ZIP] stdout: ${stdout}`);
@@ -301,7 +318,7 @@ app.listen(PORT, "0.0.0.0", () => {
   console.log(`  CDSL Encrypt Service running on port ${PORT}`);
   console.log(`  Platform: ${os.platform()} (${os.arch()})`);
   console.log(`  Node.js:  ${process.version}`);
-  console.log(`  Encrypt.exe: ${fs.existsSync(ENCRYPT_EXE) ? "✅ Found" : "❌ NOT FOUND"}`);
+  console.log(`  Encrypt.exe: ${fs.existsSync(ENCRYPT_EXE_SOURCE) ? "✅ Found" : "❌ NOT FOUND"}`);
   console.log(`  API Key:  ${API_KEY ? "✅ Enabled" : "⚠️  Disabled (open access)"}`);
   console.log("═══════════════════════════════════════════════");
   console.log(`  Endpoints:`);
